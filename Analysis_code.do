@@ -10,12 +10,6 @@ forval i=1/10{
 bysort school_gender: egen num_chg_enrolment`i' = count(chg_enrolment`i')
 gen balancedpanel`i' = num_chg_enrolment`i' == 6
 }
-*year-interacted controls
-global yearinteracted
-global controls "total_enrolbg_2013 bookinlib_2013 toiletd_2013 toiletb_2013 toiletg_2013 clrooms_2013 clgood_2013 smc_2013 smcsdp_2013 medchk_2013 electric_2013 library_2013 playground_2013 ramps_2013 cal_2013 access_2013 water_hp_2013 water_well_2013 water_tap_2013 water_others_2013 bld_govt_2013 bld_uc_2013 bld_dilap_2013 wall_pucca_2013 wall_wire_2013 wall_hedges_2013 wall_na_2013"
-foreach v in $controls {
-  global yearinteracted $yearinteracted c.`v'#i.year
-}
 *generate treatment period
 gen treatment_period=year-t_machine_year if !missing(t_machine_year)
 gen aft=treatment_period>=0 & gender==2 & t_machine_installed==1 & !missing(treatment_period)
@@ -63,6 +57,12 @@ save datapc, replace
 *************************************************************************
 //********************* Main Figures and Tables ***********************//
 *************************************************************************
+*year-interacted controls
+global yearinteracted
+global controls "total_enrolbg_2013 bookinlib_2013 toiletd_2013 toiletb_2013 toiletg_2013 clrooms_2013 clgood_2013 smc_2013 smcsdp_2013 medchk_2013 electric_2013 library_2013 playground_2013 ramps_2013 cal_2013 access_2013 water_hp_2013 water_well_2013 water_tap_2013 water_others_2013 bld_govt_2013 bld_uc_2013 bld_dilap_2013 wall_pucca_2013 wall_wire_2013 wall_hedges_2013 wall_na_2013"
+foreach v in $controls {
+  global yearinteracted $yearinteracted c.`v'#i.year
+}
 
 //***************************** Table 1 *****************************//
 *regression
@@ -148,7 +148,7 @@ restore
 }
 
 ********************************************************************************
-//***************************** Table 3 & Supp F5 *****************************//
+//***************************** Table 3 & Supp F6 *****************************//
 ***Alternative 1: untreated schools in same village***
 reghdfe chg_enrolment7 aft $yearinteracted if balancedpanel7==1, absorb(school_gender##c.year villageyear) vce(cluster schcd)
 outreg2 using 1.doc, replace nocons bdec(3) sdec(3) ctitle(1) keep(aft) 
@@ -392,6 +392,10 @@ gen btoilet=toiletb_2013>0
 gen gtoiletf=toiletg_func_2013>0
 gen gtoilet=toiletg_2013>0
 
+gen christian=strpos(school_name,"S.T")>0 | strpos(school_name,"ST")>0 | strpos(school_name,"SAINT")>0 | strpos(school_name,"HOLY")>0 | strpos(school_name,"CHURCH")>0 | strpos(school_name,"SNT")>0
+gen aft_christian=aft*christian
+gen aft_nchristian=aft*(christian==0)
+
 reghdfe chg_enrolment7 aft_gtoilet aft_ngtoilet $yearinteracted if balancedpanel7==1, absorb(school_gender##c.year blockyear) vce(cluster schcd)
 outreg2 using 1.doc, replace nocons bdec(3) sdec(3) ctitle(5) keep(aft*) 
 test aft_gtoilet=aft_ngtoilet
@@ -421,6 +425,10 @@ reghdfe chg_enrolment7 aft_gtoiletf_ratio aft_ngtoiletf_ratio $yearinteracted if
 outreg2 using 1.doc, append nocons bdec(3) sdec(3) ctitle(5) keep(aft*) 
 test aft_gtoiletf_ratio=aft_ngtoiletf_ratio
 tab gtoiletf_ratio t_machine_installed if year==2013 & e(sample)
+
+reghdfe chg_enrolment7 aft_christian aft_nchristian $yearinteracted if balancedpanel7==1 , absorb(school_gender##c.year blockyear) vce(cluster schcd)
+outreg2 using 1.doc, replace nocons bdec(3) sdec(3) ctitle(5) keep(aft_christian aft_nchristian) 
+test aft_christian=aft_nchristian if year==2013 & e(sample)
 
 ********************************************************************************
 //***************************** Figure 2 & Supp F9 ***************************//
@@ -631,6 +639,29 @@ restore
 *************************************************************************
 
 //***************************** Supp Fig 2 *****************************//
+preserve
+forval c=1/11 {
+egen totalc`c'=total(c`c'), missing by(blockcode year)
+egen totalc`c'_next=total(c`c'_next), missing by(blockcode year)
+}
+egen totalc=rowtotal(totalc1 totalc2 totalc3 totalc4 totalc5 totalc6 totalc7 totalc8 totalc9 totalc10 totalc11)
+replace totalc=. if totalc==0
+egen totalc_next=rowtotal(totalc1_next totalc2_next totalc3_next totalc4_next totalc5_next totalc6_next totalc7_next totalc8_next totalc9_next totalc10_next totalc11_next)
+replace totalc_next=. if totalc_next==0
+gen diff = ((totalc-totalc_next)/totalc)*100 if !missing(totalc) & !missing(totalc_next)
+egen mint_machine_year=min(t_machine_year), by(blockcode year)
+egen mint_machine_installed=max(t_machine_installed), by(blockcode year)
+
+keep year blockcode year totalc totalc_next mint_machine_year mint_machine_installed diff
+duplicates drop blockcode year, force
+gen treatment_period=year-mint_machine_year if !missing(mint_machine_year)
+keep if mint_machine_year!=.
+gen after=treatment_period>=0
+
+graph bar (mean) diff, over(after, relabel(1 "before treatment" 2 "after treatment")) graphregion(color(white)) bar(1, color(black%80) lcolor(black%80)) ytitle(Average Dropout Rate) 
+restore
+
+//***************************** Supp Fig 3 *****************************//
 forval i=1/11 {
 gen log_c`i'=log(c`i'+1) if !missing(c`i')
 gen log_c`i'_2013=log(c`i'_2013+1) if !missing(c`i'_2013)
@@ -649,7 +680,7 @@ graph save figure`i',replace
 graph combine figure6.gph figure7.gph figure8.gph figure9.gph figure10.gph figure11.gph, row(2) col(3) ysize(10) xsize(20) commonscheme graphregion(color(white))
 
 *************************************************************************
-//***************************** Supp Fig 4 *****************************//
+//***************************** Supp Fig 5 *****************************//
 reghdfe chg_enrolment6 before6 before5 before4 before3 before2 after0 after1 after2 after3 before1 $yearinteracted if rural==0 & balancedpanel6==1, absorb(school_gender##c.year blockyear) vce(cluster schcd)
 est store Dynamic7a
 reghdfe chg_enrolment6 before6 before5 before4 before3 before2 after0 after1 after2 after3 before1 $yearinteracted if rural==1 & balancedpanel6==1, absorb(school_gender##c.year blockyear) vce(cluster schcd)
@@ -657,7 +688,7 @@ est store Dynamic7b
 coefplot Dynamic7a, bylabel(Urban Girls - 6th Grade) || Dynamic7b, bylabel(Rural Girls - 6th Grade)  ||, omitted keep(before* after*) order(before6 before5 before4 before3 before2  before1 after0 after1 after2 after3) vertical recast(connect) ciopts(recast(rcap) lpattern(dash) lcolor(black%90)) lpattern(solid) mcolor(black) lcolor(black) yline(0,lcolor(gray%50)) xtitle(Treatment Period) ylabel(-1.5(.5).5,angle(90) glcolor(gs15%50)) xline(6, lcolor(red%50)) ytitle(DID Estimates) byopts(plotregion(fcolor(white)) graphregion(fcolor(white) margin(2 2 2 2))) p1(plotregion(lcolor(black) lwidth(medthin))) p2(plotregion(lcolor(black))) subtitle(, bcolor(white)) ysize(5) xsize(10)
 
 *************************************************************************
-//***************************** Supp Fig 7 *****************************//
+//***************************** Supp Fig 8 *****************************//
 /*generate treated sample only
 use datause, replace
 keep if t_machine_year!=.
@@ -700,7 +731,7 @@ graph save placebo1,replace
 restore
 
 *************************************************************************
-//***************************** Supp Fig 8 *****************************//
+//***************************** Supp Fig 9 *****************************//
 statsby _b[aft] _se[aft], saving(coef_placebo7_2,replace): reghdfe chg_enrolment7 aft $yearinteracted if balancedpanel7==1, absorb(school_gender##c.year blockyear) vce(cluster schcd)
 set seed 1234
 forval i=1/1000{
@@ -743,7 +774,7 @@ graph save placebo2,replace
 restore
 
 ***************************************************************************
-//***************************** Supp Fig 10 *****************************//
+//***************************** Supp Fig 11 *****************************//
 preserve
 egen totaltch=rowtotal(tch_female tch_male tch_nr) if caste=="TOTAL"
 gen femaleshare=tch_female/totaltch
@@ -1265,3 +1296,13 @@ outreg2 using 1.doc, append nocons bdec(3) sdec(3) ctitle(internet) keep(aft_*)
 reghdfe chg_enrolment7 aft_courier aft_ncourier $yearinteracted if balancedpanel7==1, absorb(school_gender##c.year blockyear) vce(cluster schcd)
 test _b[aft_courier] = _b[aft_ncourier]
 outreg2 using 1.doc, append nocons bdec(3) sdec(3) ctitle(courier) keep(aft_*) 
+
+***************************************************************************
+//***************************** Supp Table 11 *****************************//
+preserve
+keep if caste=="TOTAL" & t_machine_installed==1 & year==2013
+
+duplicates drop schcd, force
+
+tab lowhigh
+restore
